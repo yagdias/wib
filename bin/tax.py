@@ -201,11 +201,5 @@ def export_krona_tsv(final_df, file_name):
 
 dataframe = create_df_from_blast(blast_file, pident, cut_evalue)
 top1 = create_top(dataframe)
-get_taxonomy(top1, taxonomy_db_path, update_db)
-
-
-dataframe.to_csv("/home/alfred/git/wib/df.csv")
-top1.to_csv("/home/alfred/git/wib/df_top1.csv")
-
-
-
+fulltax = get_taxonomy(top1, taxonomy_db_path, update_db)
+fulltax.to_csv(f"{sample_name}.csv", index=False)
