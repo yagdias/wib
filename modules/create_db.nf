@@ -5,10 +5,10 @@ process CREATE_DB {
     file db
 
     output:
-    file "${db}.*"
+    tuple path(db), path("${db}.*")
 
     script:
     """
-    diamond makedb --db ${db} --in ${db} --threads ${task.cpus}
+    makeblastdb -dbtype nucl -in ${db} -taxid_map ${params.taxon_names} -parse_seqids
     """
 }

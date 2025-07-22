@@ -21,6 +21,6 @@ process QUALITY_CONTROL {
     -O ${sample}.R2.fq.gz \\
     -h ${sample}.fastp.html \\
     -j ${sample}.fastp.json \\
-    --qualified_quality_phred 30 \\
+    --qualified_quality_phred ${params.phred_score} \\
     """
 }

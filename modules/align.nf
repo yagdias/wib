@@ -1,22 +1,20 @@
 process ALIGN {
-    publishDir "./results/diamond/${sample}", mode: "copy", overwrite: true
+    publishDir "./results/blast/${sample}", mode: "copy", overwrite: true
 
     input:
     tuple val(sample), path(sequence)
-    file db
+    tuple val(db), file("${db}*")
 
     output:
-    tuple val(sample), path("${sample}.dblastx"), emit: blast_result
+    tuple val(sample), path("${sample}.blastn"), emit: blast_result
 
     script:
     """
-    diamond blastx \\
-            --out ${sample}.dblastx \\
-            --outfmt 6\\
-            --query ${sequence} \\
-            --db ${db} \\
-            --evalue 0.001 \\
-            --threads ${task.cpus} \\
-            --ultra-sensitive
+    blastn \\
+            -query ${sequence} \\
+            -db ${db} \\
+            -outfmt "6 qseqid qlen sseqid slen pident length mismatch gapopen qstart qend sstart send evalue bitscore staxids sscinames sskingdoms stitle salltitles nident qcovhsp"  \\
+            -num_threads ${task.cpus} \\
+            -out ${sample}.blastn
     """
 }
