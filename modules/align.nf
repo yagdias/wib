@@ -1,5 +1,5 @@
 process ALIGN {
-    publishDir "./results/blast/${sample}", mode: "copy", overwrite: true
+    publishDir { "${projectDir}/results/blast/${sample}" }, mode: "copy", overwrite: true
 
     input:
     tuple val(sample), path(sequence)

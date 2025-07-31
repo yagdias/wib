@@ -1,5 +1,5 @@
 process ASSEMBLY {
-    publishDir "results/megahit/${sample}", mode: 'copy', overwrite: true
+    publishDir { "${projectDir}/results/megahit/${sample}" }, mode: 'copy', overwrite: true
 
     input:
     tuple val(sample), path(fastq)

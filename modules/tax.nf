@@ -1,5 +1,5 @@
 process TAX {
-    publishDir "results/tax/${sample}", mode: 'copy', overwrite: true
+    publishDir { "${projectDir}/results/tax/${sample}" }, mode: 'copy', overwrite: true
 
     input:
     tuple val(sample), path(blast_output)
