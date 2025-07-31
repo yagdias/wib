@@ -36,28 +36,35 @@ def extract_access(x):
 
 def create_df_from_blast(blast_file, pident, cut_evalue):
     mode = blast_file.split(".")[-2]
-    columns = ['qseqid', 'qlen', 'sseqid', 'slen', 'pident', 'length', 'mismatch', 'gapopen', 'qstart', 'qend', 'sstart', 'send', 'evalue', 'bitscore', 'staxids', 'sscinames', 'sskingdoms', 'stitle', 'salltitles', 'nident', 'qcovhsp']
-    df = pd.read_csv(blast_file, sep='\t', names=columns)
-    df = df[(df['pident'] >= pident) & (df['evalue'] < cut_evalue)].sort_values(['bitscore', 'evalue'], ascending=False)
-    df["sseqid"] = df["sseqid"].apply(extract_access).astype(str)
-    df["stitle"] = df["sseqid"] + " " + df["stitle"]
-    if not mode.startswith("b"):
-        df = df.rename(columns={"qcovhsp": "qcovs"})
-        df['qcovhsp'] = (df['length'] / df['qlen']) * 100
-        df['qcovhsp'] = df['qcovhsp'].astype('int')
-    df['taxid'] = df['staxids']
-    return df
+    columns = [
+        'qseqid', 'qlen', 'sseqid', 'slen', 'pident', 'length', 'mismatch',
+        'gapopen', 'qstart', 'qend', 'sstart', 'send', 'evalue', 'bitscore',
+        'staxids', 'sscinames', 'sskingdoms', 'stitle', 'salltitles', 
+        'nident', 'qcovhsp'
+    ]
 
-# 2
+    best_hits = {}
 
-def create_top(df):
-    top5_list = []
-    contig_names = df['qseqid'].unique()
-    for contig_name in contig_names:
-        filtered_group = df[df['qseqid'] == contig_name].nlargest(1, 'bitscore')
-        top5_list.append(filtered_group)
-    top5_df = pd.concat(top5_list, ignore_index=True)
-    return top5_df
+    for chunk in pd.read_csv(blast_file, sep='\t', names=columns, chunksize=100000):
+        chunk = chunk[(chunk['pident'] >= pident) & (chunk['evalue'] < cut_evalue)]
+
+        chunk["sseqid"] = chunk["sseqid"].apply(extract_access).astype(str)
+        chunk["stitle"] = chunk["sseqid"] + " " + chunk["stitle"]
+
+        chunk['taxid'] = chunk['staxids']
+
+        # Para cada qseqid no chunk, salva o melhor hit
+        for qseqid, group in chunk.groupby('qseqid'):
+            top_hit = group.nlargest(1, 'bitscore').iloc[0]
+            if qseqid not in best_hits:
+                best_hits[qseqid] = top_hit
+            else:
+                if top_hit['bitscore'] > best_hits[qseqid]['bitscore']:
+                    best_hits[qseqid] = top_hit
+
+    final_df = pd.DataFrame(best_hits.values())
+
+    return final_df
 
 # 3
 
@@ -199,7 +206,8 @@ def export_krona_tsv(final_df, file_name):
 
 
 
-dataframe = create_df_from_blast(blast_file, pident, cut_evalue)
-top1 = create_top(dataframe)
-fulltax = get_taxonomy(top1, taxonomy_db_path, update_db)
+fulltax = create_df_from_blast(blast_file, pident, cut_evalue)
+#top1 = create_top(dataframe)
+#fulltax = get_taxonomy(top1, taxonomy_db_path, update_db)
 fulltax.to_csv(f"{sample_name}.csv", index=False)
+
