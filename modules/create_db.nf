@@ -1,5 +1,5 @@
 process CREATE_DB {
-    publishDir "./results/tmp/${db}", mode: "copy", overwrite: true
+    publishDir { "${projectDir}/results/tmp/${db}" }, mode: "copy", overwrite: true
 
     input:
     file db

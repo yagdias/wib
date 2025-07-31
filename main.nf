@@ -1,3 +1,5 @@
+nextflow.enable.dsl=2
+
 include { QUALITY_CONTROL } from './modules/quality_control.nf'
 include { ASSEMBLY } from './modules/assembly.nf'
 include { MERGE } from './modules/merge.nf'

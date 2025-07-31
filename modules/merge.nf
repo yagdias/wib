@@ -1,5 +1,5 @@
 process MERGE {
-    publishDir "results/merge/${sample}", mode: 'copy', overwrite: true
+    publishDir { "${projectDir}/results/merge/${sample}" }, mode: 'copy', overwrite: true
 
     input:
     tuple val(sample), path(fastq)

@@ -202,12 +202,6 @@ def export_krona_tsv(final_df, file_name):
     krona_df = final_df[['qseqid', 'taxid']].to_csv(f"{file_name}_krona.tsv", sep='\t', index=False, header=False)
 
 
-
-
-
-
-fulltax = create_df_from_blast(blast_file, pident, cut_evalue)
-#top1 = create_top(dataframe)
-#fulltax = get_taxonomy(top1, taxonomy_db_path, update_db)
+dataframe = create_df_from_blast(blast_file, pident, cut_evalue)
+fulltax = get_taxonomy(dataframe, taxonomy_db_path, update_db)
 fulltax.to_csv(f"{sample_name}.csv", index=False)
-

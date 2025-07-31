@@ -1,5 +1,5 @@
 process QUALITY_CONTROL {
-    publishDir "results/fastp/${sample}", mode: 'copy', overwrite: true
+    publishDir { "${projectDir}/results/fastp/${sample}" }, mode: 'copy', overwrite: true
 
     input:
     tuple val(sample), path(fastq)
