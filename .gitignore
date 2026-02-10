@@ -1,0 +1,8 @@
+work/
+results/
+.nextflow*
+.my_containers/
+*.img
+assets/taxonomy_db/taxonomy.sqlite
+assets/taxonomy_db/*.sqlite
+reports/*.html
