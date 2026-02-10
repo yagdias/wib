@@ -1,0 +1,389 @@
+---
+title: "Análise Taxonômica de Sequências Classificadas"
+author: "Análise de Metagenômica"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+    code_folding: hide
+params:
+  tax_dir: "results/tax"
+  list_unif_file: "results/assembly_classification_counts.txt"
+  output_dir: "results/plots"
+  taxon_level: "family"
+  min_sequences: 1000
+  top_n_per_sample: 10
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 6
+)
+```
+
+# Configurações
+
+```{r config}
+library(readr)
+library(dplyr)
+library(purrr)
+library(ggplot2)
+library(stringr)
+library(tidyr)
+library(knitr)
+library(DT)
+
+# --------- PARAMETERS ---------
+tax_dir <- params$tax_dir
+list_unif_file <- params$list_unif_file
+output_dir <- params$output_dir
+taxon <- params$taxon_level
+min_sequences <- params$min_sequences
+top_n_per_sample <- params$top_n_per_sample
+
+if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+
+cat("Parameters Used:\n")
+cat("Taxonomy Directory:", tax_dir, "\n")
+cat("list_unif File:", list_unif_file, "\n")
+cat("Output Directory:", output_dir, "\n")
+```
+
+# 1. Leitura dos Dados de Classificação
+
+```{r leitura_classificacao}
+# Checks if directory exists
+if (!dir.exists(tax_dir)) {
+  stop(paste("Directory not found:", tax_dir))
+}
+
+arquivos <- list.files(
+  path = tax_dir, 
+  pattern = "\\.csv$", 
+  full.names = TRUE,
+  recursive = TRUE
+)
+
+if (length(arquivos) == 0) {
+    stop("Nenhum arquivo .csv encontrado no diretório de entrada.")
+}
+
+tabela_completa <- map_dfr(arquivos, function(arquivo) {
+  read_csv(
+    arquivo,
+    col_types = cols(
+      staxids = col_character(),
+      .default = col_character()
+    ),
+    show_col_types = FALSE
+  ) %>%
+    mutate(sample = tools::file_path_sans_ext(basename(arquivo)))
+})
+
+cat("Total de registros lidos:", nrow(tabela_completa), "\n")
+cat("Amostras encontradas:", n_distinct(tabela_completa$sample), "\n")
+```
+
+# 2. Leitura dos Dados de Montagem (list_unif)
+
+```{r leitura_montagem}
+if (!file.exists(list_unif_file)) {
+    warning(paste("list_unif file not found at:", list_unif_file, ". Report will continue without assembly data."))
+    dados_montagem <- data.frame(sample = unique(tabela_completa$sample), reads_montados = NA, reads_classificados_total = NA)
+} else {
+    linhas <- read_lines(list_unif_file)
+
+    # Localiza cabeçalhos
+    idx_mont_hdr <- which(str_detect(linhas, "^\\s*montados\\s*$"))[1]
+    idx_class_hdr <- which(str_detect(linhas, "^\\s*classificad"))[1]
+
+    # Separa blocos
+    if (is.na(idx_mont_hdr) || is.na(idx_class_hdr)) {
+        warning("Formato inválido do arquivo list_unif. Esperado cabeçalhos 'montados' e 'classificad'.")
+        dados_montagem <- data.frame(sample = unique(tabela_completa$sample), reads_montados = NA, reads_classificados_total = NA)
+    } else {
+        bloco_mont <- linhas[(idx_mont_hdr + 1):(idx_class_hdr - 1)]
+        bloco_class <- linhas[(idx_class_hdr + 1):length(linhas)]
+
+        # Função de limpeza
+        limpa_bloco <- function(x) {
+          x <- x[!str_detect(x, "\\btotal\\b") & str_squish(x) != ""]
+          str_squish(x)
+        }
+
+        bloco_mont <- limpa_bloco(bloco_mont)
+        bloco_class <- limpa_bloco(bloco_class)
+
+        # Parse das tabelas
+        df_mont <- read_table(
+          paste(bloco_mont, collapse = "\n"),
+          col_names = c("sample", "reads_montados"),
+          col_types = cols(
+            sample = col_character(),
+            reads_montados = col_double()
+          ),
+          show_col_types = FALSE
+        )
+
+        df_class_total <- read_table(
+          paste(bloco_class, collapse = "\n"),
+          col_names = c("reads_classificados_total", "sample"),
+          col_types = cols(
+            reads_classificados_total = col_double(),
+            sample = col_character()
+          ),
+          show_col_types = FALSE
+        )
+
+        # Merge dos dados de montagem
+        dados_montagem <- full_join(df_class_total, df_mont, by = "sample") %>%
+          replace_na(list(reads_classificados_total = 0, reads_montados = 0))
+          
+        cat("Dados de montagem carregados para", nrow(dados_montagem), "amostras\n")
+    }
+}
+```
+
+# 3. Aplicação do Filtro de Táxons
+
+```{r filtro_taxon}
+# Conta total de sequências por táxon (global)
+if (nrow(tabela_completa) > 0) {
+    contagem_taxon <- tabela_completa %>%
+      count(!!sym(taxon), name = "total_sequencias") %>%
+      arrange(desc(total_sequencias))
+    
+    # Taxons passing filter
+    taxons_validos <- contagem_taxon %>%
+      filter(total_sequencias >= min_sequences) %>%
+      pull(!!sym(taxon))
+    
+    cat("\nTaxa with >=", min_sequences, "sequences:", length(taxons_validos), "\n")
+    cat("Táxons removidos:", nrow(contagem_taxon) - length(taxons_validos), "\n\n")
+    
+    # Aplica filtro
+    dados_filtrados <- tabela_completa %>%
+      filter(.data[[taxon]] %in% taxons_validos)
+    
+    cat("Registros após filtro:", nrow(dados_filtrados), "\n")
+} else {
+    dados_filtrados <- tabela_completa
+    taxons_validos <- c()
+    cat("Nenhum dado para filtrar.\n")
+}
+```
+
+## Táxons Mantidos
+
+```{r tabela_taxons_validos}
+if (nrow(tabela_completa) > 0) {
+    contagem_taxon %>%
+      filter(total_sequencias >= min_sequences) %>%
+      mutate(status = "✓ Kept") %>%
+      datatable(
+        options = list(pageLength = 15),
+        rownames = FALSE
+      )
+}
+```
+
+# 4. Construção da Tabela de Resultados
+
+```{r tabela_resultados}
+if (nrow(dados_filtrados) > 0) {
+    # Contagem por amostra e táxon
+    resultados_por_amostra_taxon <- dados_filtrados %>%
+      count(sample, !!sym(taxon), name = "reads_classificados") %>%
+      arrange(sample, desc(reads_classificados))
+    
+    # Calcula total de reads montados APÓS o filtro (soma das reads classificadas)
+    reads_montados_pos_filtro <- resultados_por_amostra_taxon %>%
+      group_by(sample) %>%
+      summarise(reads_montados_pos_filtro = sum(reads_classificados), .groups = "drop")
+    
+    # Merge com dados de montagem
+    tabela_final <- resultados_por_amostra_taxon %>%
+      left_join(reads_montados_pos_filtro, by = "sample") %>%
+      left_join(dados_montagem, by = "sample") %>%
+      mutate(
+        # Proporção: reads deste táxon / total de reads montadas após filtro
+        prop_taxon_filtrado = round(100 * reads_classificados / reads_montados_pos_filtro, 2),
+        # Proporção: reads deste táxon / total de reads montadas originais
+        prop_taxon_original = ifelse(reads_montados > 0, round(100 * reads_classificados / reads_montados, 2), NA),
+        # Proporção: reads montadas pós-filtro / reads montadas originais
+        prop_recuperacao = ifelse(reads_montados > 0, round(100 * reads_montados_pos_filtro / reads_montados, 2), NA)
+      ) %>%
+      select(
+        sample,
+        taxon = !!sym(taxon),
+        reads_classificados,
+        reads_montados_pos_filtro,
+        reads_montados_original = reads_montados,
+        prop_taxon_filtrado,
+        prop_taxon_original,
+        prop_recuperacao
+      )
+    
+    # Ordena amostras numericamente
+    ordem_amostras <- unique(tabela_final$sample)
+    # Tenta ordenar numericamente se possível
+    nums <- str_extract(ordem_amostras, "\\d+")
+    if (!all(is.na(nums))) {
+        ordem_amostras <- ordem_amostras[order(as.numeric(nums))]
+    } else {
+        ordem_amostras <- sort(ordem_amostras)
+    }
+    
+    tabela_final <- tabela_final %>%
+      mutate(sample = factor(sample, levels = ordem_amostras)) %>%
+      arrange(sample, desc(reads_classificados))
+    
+    # Exports CSV
+    write_csv(
+      tabela_final, 
+      file.path(output_dir, "taxonomic_results_complete.csv")
+    )
+    
+    cat("Results table saved to:", 
+        file.path(output_dir, "taxonomic_results_complete.csv"), "\n")
+} else {
+    tabela_final <- data.frame()
+    cat("Nenhum resultado para tabular.\n")
+}
+```
+
+## Prévia da Tabela de Resultados
+
+**Colunas:**
+  
+  - `sample`: Identificador da amostra
+- `taxon`: Categoria taxonômica analisada
+- `reads_classificados`: Número de reads classificadas para este táxon
+- `reads_montados_pos_filtro`: Total de reads montadas após aplicar o filtro (soma de todos os táxons válidos)
+- `reads_montados_original`: Total de reads montadas na amostra (antes do filtro)
+- `prop_taxon_filtrado`: % deste táxon em relação ao total pós-filtro
+- `prop_taxon_original`: % deste táxon em relação ao total original
+- `prop_recuperacao`: % de recuperação após filtro (pós-filtro/original)
+
+```{r preview_tabela}
+if (nrow(tabela_final) > 0) {
+    datatable(
+      tabela_final,
+      options = list(pageLength = 20, scrollX = TRUE),
+      rownames = FALSE
+    ) %>%
+      formatRound(columns = c("prop_taxon_filtrado", "prop_taxon_original", "prop_recuperacao"), 
+                  digits = 2)
+}
+```
+
+# 5. Gráficos Individuais por Amostra
+
+```{r graficos_individuais, results='asis', fig.height=6, fig.width=10}
+if (nrow(tabela_final) > 0) {
+    for (amostra_atual in unique(tabela_final$sample)) {
+      cat("\n\n## Amostra:", amostra_atual, "\n\n")
+      
+      # Filters sample data
+      dados_amostra <- tabela_final %>%
+        filter(sample == amostra_atual) %>%
+        arrange(desc(reads_classificados)) %>%
+        slice_head(n = top_n_per_sample)
+      
+      if (nrow(dados_amostra) == 0) {
+        cat("*No data available for this sample.*\n\n")
+        next
+      }
+      
+      # Ordena táxons por contagem (decrescente)
+      dados_amostra <- dados_amostra %>%
+        mutate(taxon = factor(taxon, levels = rev(unique(taxon))))
+      
+      # Cria gráfico
+      p <- ggplot(dados_amostra, 
+                  aes(x = reads_classificados, y = taxon, fill = taxon)) +
+        geom_col(show.legend = FALSE, alpha = 0.8) +
+        geom_text(
+          aes(label = scales::comma(reads_classificados)),
+          hjust = -0.1,
+          size = 3.5,
+          color = "black"
+        ) +
+        scale_x_continuous(
+          labels = scales::comma,
+          expand = expansion(mult = c(0, 0.15))
+        ) +
+        labs(
+          title = paste0("Top ", top_n_per_sample, " ", taxon, " - ", amostra_atual),
+          subtitle = paste0("Total assembled reads (post-filter): ",  
+                            scales::comma(unique(dados_amostra$reads_montados_pos_filtro), accuracy = 1)),
+          x = "Número de Reads Classificadas",
+          y = str_to_title(taxon)
+        ) +
+        theme_classic() +
+        theme(
+          plot.title = element_text(face = "bold", size = 14),
+          plot.subtitle = element_text(size = 10, color = "gray40"),
+          axis.text.y = element_text(size = 10),
+          panel.grid.major.x = element_line(color = "gray90")
+        ) +
+        coord_cartesian(clip = "off")
+      
+      print(p)
+      
+      # Save PNG
+      ggsave(
+        filename = file.path(output_dir, paste0(amostra_atual, "_top_", taxon, ".png")),
+        plot = p,  
+        width = 10, 
+        height = 6, 
+        dpi = 300
+      )
+      
+      cat("\n")
+    }
+}
+```
+
+# 6. Resumo Geral
+
+```{r resumo_geral}
+if (nrow(tabela_final) > 0) {
+    resumo <- tabela_final %>%
+      group_by(sample) %>%
+      summarise(
+        n_taxons = n(),
+        total_reads_classificados = sum(reads_classificados),
+        reads_montados_pos_filtro = first(reads_montados_pos_filtro),
+        reads_montados_original = first(reads_montados_original),
+        prop_recuperacao = first(prop_recuperacao),
+        .groups = "drop"
+      ) %>%
+      arrange(sample)
+    
+    datatable(
+      resumo,
+      caption = "Resumo por Amostra",
+      options = list(pageLength = 25),
+      rownames = FALSE
+    ) %>%
+      formatRound(columns = "prop_recuperacao", digits = 2)
+      
+    cat("\n### Estatísticas Finais\n\n")
+    cat("- Total de amostras analisadas:", nrow(resumo), "\n")
+    cat("- Total de táxons válidos:", length(taxons_validos), "\n")
+    cat("- Média de táxons por amostra:", round(mean(resumo$n_taxons), 1), "\n")
+    cat("- Média de recuperação pós-filtro:", 
+        round(mean(resumo$prop_recuperacao, na.rm = TRUE), 2), "%\n")
+}
+```
+
+---
+  
+  **Análise concluída em:** `r Sys.time()`
