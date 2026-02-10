@@ -1,0 +1,3 @@
+sample,r1,r2
+45,assets/fastq/45_S46_L001_R1_001.fastq.gz,assets/fastq/45_S46_L001_R2_001.fastq.gz
+47,assets/fastq/47_S48_L001_R1_001.fastq.gz,assets/fastq/47_S48_L001_R2_001.fastq.gz

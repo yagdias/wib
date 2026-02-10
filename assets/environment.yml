@@ -1,0 +1,12 @@
+name: wib_report
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - r-base
+  - r-rmarkdown
+  - r-tidyverse
+  - r-dt
+  - r-knitr
+  - pandoc
