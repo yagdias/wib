@@ -13,7 +13,7 @@ The processed sequences are then aligned against a nucleotide database using `bl
 ## Prerequisites
 
 - [Nextflow](https://www.nextflow.io/) (>=21.10.6)
-- [Singularity](https://sylabs.io/singularity/)
+- [Singularity](https://sylabs.io/singularity/) (≥=3.11.4)
 
 ## Input Files
 
@@ -39,6 +39,18 @@ You can download the latest version from NCBI:
 
 *Note: The repository includes a `nucl_gb.accession2taxid_TEST.txt` for testing purposes only.*
 
+### 3. BLAST database
+
+It's necessary to download sequences **from NCBI** for using the workflow.
+
+## Test command
+
+For testing the instalation you can run the following command:
+
+```bash
+nextflow run main.nf
+```
+
 ## Usage
 
 Run the pipeline with the following command:
@@ -48,7 +60,7 @@ nextflow run main.nf \
     --input_csv samples.csv \
     --db /path/to/blast_db \
     --taxon_names /path/to/nucl_gb.accession2taxid.txt \
-    --mode 1 \
+    --mode 2 \
     --phred_score 30 \
     --min_pident 0 \
     --cut_evalue 0.001
@@ -88,11 +100,6 @@ An RMarkdown script is provided in `reports/taxonomic_analysis_report.Rmd` to ge
 
 You can render the report using RStudio or R command line:
 
-```R
-rmarkdown::render("reports/taxonomic_analysis_report.Rmd", 
-                  params = list(
-                      tax_dir = "results/tax", 
-                      list_unif_file = "results/assembly_classification_counts.txt",
-                      output_dir = "results/plots"
-                  ))
+```bash
+Rscript -e 'rmarkdown::render("reports/taxonomic_analysis_report.Rmd", knit_root_dir = getwd(), params = list(tax_dir = "results/tax", list_unif_file = "results/assembly_classification_counts.txt", output_dir = "results/plots"))'
 ```
